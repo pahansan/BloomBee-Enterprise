@@ -1,4 +1,5 @@
 """Implement tensor computations with pytorch."""
+import contextlib
 import math
 from enum import Enum, auto
 from functools import partial
@@ -1091,7 +1092,8 @@ class TorchDevice:
         return TorchTensor.create_from_torch(out, self)
 
     def synchronize(self):
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
     def mem_stats(self):
         if self.device_type == DeviceType.CUDA:
@@ -1106,7 +1108,8 @@ class TorchDevice:
         return cur_mem, peak_mem
 
     def print_stats(self, output_file=None):
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         cur_mem, peak_mem = self.mem_stats()
 
         if output_file is not None:
@@ -1379,12 +1382,18 @@ def map_to_torch_tensor(tensor, indices):
 
 def copy_worker_func(queue, cuda_id):
     """The copy worker thread."""
-    torch.cuda.set_device(cuda_id)
+    use_cuda = torch.cuda.is_available()
+    if use_cuda:
+        torch.cuda.set_device(cuda_id)
+        cpu_buf = torch.empty((1 * GB,), dtype=torch.float16, pin_memory=True)
+        copy_stream = torch.cuda.Stream()
+        stream_context = torch.cuda.stream(copy_stream)
+    else:
+        cpu_buf = None
+        copy_stream = None
+        stream_context = contextlib.nullcontext()
 
-    cpu_buf = torch.empty((1 * GB,), dtype=torch.float16, pin_memory=True)
-    copy_stream = torch.cuda.Stream()
-
-    with torch.cuda.stream(copy_stream), torch.inference_mode():
+    with stream_context, torch.inference_mode():
         while True:
             item = queue.get()
             if item is None:
@@ -1397,6 +1406,8 @@ def copy_worker_func(queue, cuda_id):
 
             if (src.device.device_type == DeviceType.CUDA or
                 dst.device.device_type == DeviceType.CUDA):
+                if not use_cuda:
+                    raise RuntimeError("CUDA tensor copy requested, but torch.cuda is not available")
                 # Use a pinned cpu buffer as a relay
                 size = np.prod(src_data.shape)
                 tmp_cpu_buf = cpu_buf[:size].view(src_data.shape)
