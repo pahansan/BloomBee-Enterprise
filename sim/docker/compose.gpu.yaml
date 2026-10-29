@@ -1,0 +1,14 @@
+# GPU override for hosts with the NVIDIA Container Toolkit.
+#
+#   IMAGE_TAG=bloombee-sim:cuda DEVICE=cuda:0 DTYPE=bfloat16 \
+#     docker compose -f sim/docker/compose.yaml -f sim/docker/compose.gpu.yaml ...
+#
+# Docker Desktop for Linux does not expose the host GPU via CDI; use a real
+# Docker Engine + nvidia-container-toolkit install for this override.
+services:
+  node-0:
+    gpus: all
+  node-1:
+    gpus: all
+  client:
+    gpus: all

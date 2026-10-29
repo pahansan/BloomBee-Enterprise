@@ -1,0 +1,106 @@
+name: bloombee-sim
+
+x-common: &common
+  image: ${IMAGE_TAG:-bloombee-sim:cpu}
+  restart: "no"
+  shm_size: "2gb"
+  volumes:
+    - ./state:/state
+  environment: &common_env
+    MODEL: ${MODEL:-Qwen/Qwen3-0.6B}
+    DHT_PREFIX: ${DHT_PREFIX:-sim-Qwen3-0-6B}
+    DEVICE: ${DEVICE:-cpu}
+    DTYPE: ${DTYPE:-float32}
+    KV_TOKENS: ${KV_TOKENS:-2048}
+    MAX_BATCH: ${MAX_BATCH:-2048}
+    LAYERS: ${LAYERS:-28}
+    BOOTSTRAP_ADDR: ${BOOTSTRAP_ADDR:-}
+    HF_HOME: /opt/hf
+    HUGGINGFACE_HUB_CACHE: /opt/hf/hub
+    BLOOMBEE_CACHE: /opt/hf/hub
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    BLOOMBEE_COPY_BUFFER_MB: ${BLOOMBEE_COPY_BUFFER_MB:-64}
+    NETEM_ENABLE: ${NETEM_ENABLE:-1}
+    NVIDIA_DRIVER_CAPABILITIES: compute,utility
+  networks:
+    simnet:
+
+services:
+  bootstrap:
+    <<: *common
+    container_name: bloombee-sim-bootstrap
+    environment:
+      <<: *common_env
+      ROLE: bootstrap
+      ANNOUNCE_IP: 172.31.50.10
+    mem_limit: 1g
+    networks:
+      simnet:
+        ipv4_address: 172.31.50.10
+
+  node-0:
+    <<: *common
+    container_name: bloombee-sim-node-0
+    cap_add: ["NET_ADMIN"]
+    environment:
+      <<: *common_env
+      ROLE: server
+      NODE_INDEX: "0"
+      BLOCKS: "0:14"
+      ANNOUNCE_IP: 172.31.50.11
+      NETEM_DELAY_MS: ${NETEM_DELAY_MS:-20}
+      NETEM_JITTER_MS: ${NETEM_JITTER_MS:-5}
+      NETEM_LOSS_PCT: ${NETEM_LOSS_PCT:-0.1}
+      NETEM_RATE_MBIT: ${NETEM_RATE_MBIT:-100}
+    cpus: "2"
+    mem_limit: 6g
+    networks:
+      simnet:
+        ipv4_address: 172.31.50.11
+
+  node-1:
+    <<: *common
+    container_name: bloombee-sim-node-1
+    cap_add: ["NET_ADMIN"]
+    environment:
+      <<: *common_env
+      ROLE: server
+      NODE_INDEX: "1"
+      BLOCKS: "14:28"
+      ANNOUNCE_IP: 172.31.50.12
+      NETEM_DELAY_MS: ${NETEM_DELAY_MS:-20}
+      NETEM_JITTER_MS: ${NETEM_JITTER_MS:-5}
+      NETEM_LOSS_PCT: ${NETEM_LOSS_PCT:-0.1}
+      NETEM_RATE_MBIT: ${NETEM_RATE_MBIT:-100}
+    cpus: "2"
+    mem_limit: 6g
+    networks:
+      simnet:
+        ipv4_address: 172.31.50.12
+
+  client:
+    <<: *common
+    container_name: bloombee-sim-client
+    environment:
+      <<: *common_env
+      ROLE: client
+      CLIENT_DEVICE: ${CLIENT_DEVICE:-cpu}
+      CLIENT_DTYPE: ${CLIENT_DTYPE:-float32}
+      CLIENT_NETEM: ${CLIENT_NETEM:-0}
+      WAIT_TIMEOUT: ${WAIT_TIMEOUT:-600}
+      SMOKE_TOKENS: ${SMOKE_TOKENS:-8}
+      SMOKE_PROMPT: ${SMOKE_PROMPT:-The capital of France is}
+    cpus: "2"
+    mem_limit: 4g
+    networks:
+      simnet:
+        ipv4_address: 172.31.50.13
+
+networks:
+  simnet:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.50.0/24

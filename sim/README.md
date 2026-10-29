@@ -176,6 +176,19 @@ Get the exact `initial_peers` and model id with `./sim/simctl env`.
 > endpoint. If you need `curl`/HTTP for the group demo, add a thin FastAPI
 > wrapper around the client above.
 
+## Container mode (isolated network)
+
+A self-contained Docker image and an isolated bridge with `tc netem` are in
+[`sim/docker/`](docker/README.md). The image includes Python, torch,
+transformers, pinned Hivemind, BloomBee and the default model; runtime
+containers need no host Python environment and no internet:
+
+```bash
+./sim/docker/run.sh up
+./sim/docker/run.sh ask "Say hello in one sentence." --max-new-tokens 32
+./sim/docker/run.sh down
+```
+
 ## Manual block split
 
 By default the 28 layers are split evenly between `--nodes`. To control the

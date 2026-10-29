@@ -201,6 +201,10 @@ sim/.uv-cache/
 sim/.pip-cache/
 sim/.deps/
 
+# Containerized simulation state / generated compose env.
+sim/docker/state/
+sim/docker/.env
+
 # VS Code
 .vscode/
 
