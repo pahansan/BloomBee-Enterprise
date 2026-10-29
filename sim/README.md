@@ -184,10 +184,22 @@ transformers, pinned Hivemind, BloomBee and the default model; runtime
 containers need no host Python environment and no internet:
 
 ```bash
-./sim/docker/run.sh up
+./sim/docker/run.sh up --nodes 3
 ./sim/docker/run.sh ask "Say hello in one sentence." --max-new-tokens 32
 ./sim/docker/run.sh down
 ```
+
+## Choosing the number of workers
+
+If every worker gets the same number of layers, just pass `--nodes`; the harness
+computes the split itself (remainder goes to the first workers):
+
+```bash
+./sim/run.sh --nodes 4                 # 28 layers -> 7+7+7+7
+./sim/docker/run.sh up --nodes 3       # containerized: 10+9+9
+```
+
+Use `--block-split` only when you need a custom, non-uniform split.
 
 ## Manual block split
 

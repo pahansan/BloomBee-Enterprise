@@ -204,6 +204,7 @@ sim/.deps/
 # Containerized simulation state / generated compose env.
 sim/docker/state/
 sim/docker/.env
+sim/docker/compose.generated.yaml
 
 # VS Code
 .vscode/

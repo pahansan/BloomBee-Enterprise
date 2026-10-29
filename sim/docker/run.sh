@@ -2,7 +2,8 @@
 # Containerized BloomBee swarm with an isolated bridge network and netem.
 #
 #   ./sim/docker/run.sh up                 # CPU image, 2 workers, 20ms link
-#   ./sim/docker/run.sh up --gpu           # CUDA image (NVIDIA runtime required)
+#   ./sim/docker/run.sh up --nodes 4       # auto-split 28 layers over 4 workers
+#   ./sim/docker/run.sh up --gpu --nodes 3 # CUDA image (NVIDIA runtime required)
 #   ./sim/docker/run.sh smoke
 #   ./sim/docker/run.sh ask "prompt" --max-new-tokens 128
 #   ./sim/docker/run.sh logs node-0
@@ -13,6 +14,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOCKER_DIR="$ROOT/sim/docker"
 ENV_FILE="$DOCKER_DIR/.env"
+GENERATED="$DOCKER_DIR/compose.generated.yaml"
 mkdir -p "$DOCKER_DIR/state"
 touch "$ENV_FILE"
 
@@ -26,6 +28,7 @@ MODEL="Qwen/Qwen3-0.6B"
 DHT_PREFIX="sim-Qwen3-0-6B"
 KV_TOKENS=2048
 MAX_BATCH=2048
+NODES=2
 LAYERS=28
 DTYPE="float32"
 DEVICE="cpu"
@@ -41,9 +44,14 @@ load_env() {
 load_env
 
 compose() {
-  local files=(-f "$DOCKER_DIR/compose.yaml")
-  if [[ "$USE_GPU" == "1" ]]; then
-    files+=(-f "$DOCKER_DIR/compose.gpu.yaml")
+  local files=()
+  if [[ -f "$GENERATED" ]]; then
+    files=(-f "$GENERATED")
+  else
+    files=(-f "$DOCKER_DIR/compose.yaml")
+    if [[ "$USE_GPU" == "1" ]]; then
+      files+=(-f "$DOCKER_DIR/compose.gpu.yaml")
+    fi
   fi
   docker compose "${files[@]}" --project-directory "$DOCKER_DIR" --env-file "$ENV_FILE" "$@"
 }
@@ -72,6 +80,7 @@ MODEL=${MODEL}
 DHT_PREFIX=${DHT_PREFIX}
 KV_TOKENS=${KV_TOKENS}
 MAX_BATCH=${MAX_BATCH}
+NODES=${NODES}
 LAYERS=${LAYERS}
 BOOTSTRAP_ADDR=${addr}
 CLIENT_DEVICE=${CLIENT_DEVICE:-cpu}
@@ -116,6 +125,7 @@ case "$COMMAND" in
         --build) BUILD=1; shift ;;
         --model) MODEL="$2"; shift 2 ;;
         --dht-prefix) DHT_PREFIX="$2"; shift 2 ;;
+        --nodes) NODES="$2"; shift 2 ;;
         --kv-tokens) KV_TOKENS="$2"; shift 2 ;;
         --max-batch) MAX_BATCH="$2"; shift 2 ;;
         --layers) LAYERS="$2"; shift 2 ;;
@@ -145,17 +155,43 @@ case "$COMMAND" in
       "$DOCKER_DIR/build.sh" "$MODE"
     fi
 
+    if ! [[ "$NODES" =~ ^[0-9]+$ ]] || (( NODES < 1 )); then
+      echo "ERROR: --nodes must be a positive integer" >&2
+      exit 2
+    fi
+    if (( NODES > LAYERS )); then
+      echo "ERROR: cannot split $LAYERS layers between $NODES nodes" >&2
+      exit 2
+    fi
+
     compose down --remove-orphans >/dev/null 2>&1 || true
     write_env ""
+    gpu_arg=()
+    if [[ "$USE_GPU" == "1" ]]; then gpu_arg=(--gpu); fi
+    python3 "$DOCKER_DIR/render_compose.py" \
+      --nodes "$NODES" --layers "$LAYERS" \
+      --image-tag "$IMAGE_TAG" \
+      --model "$MODEL" --dht-prefix "$DHT_PREFIX" \
+      --device "$DEVICE" --dtype "$DTYPE" \
+      --client-device "$CLIENT_DEVICE" --client-dtype "${CLIENT_DTYPE:-float32}" \
+      --kv-tokens "$KV_TOKENS" --max-batch "$MAX_BATCH" \
+      --copy-buffer-mb "${BLOOMBEE_COPY_BUFFER_MB:-64}" \
+      --delay-ms "$NETEM_DELAY_MS" --jitter-ms "$NETEM_JITTER_MS" \
+      --loss-pct "$NETEM_LOSS_PCT" --rate-mbit "$NETEM_RATE_MBIT" \
+      "${gpu_arg[@]}" \
+      --output "$GENERATED"
     compose up -d --remove-orphans bootstrap
     addr="$(wait_for_bootstrap)"
     write_env "$addr"
     echo "[up] bootstrap: $addr"
-    compose up -d --remove-orphans node-0 node-1
-    echo "[up] workers started; running readiness + smoke"
+    node_services=()
+    for ((i=0; i<NODES; i++)); do node_services+=("node-$i"); done
+    compose up -d --remove-orphans "${node_services[@]}"
+    echo "[up] $NODES worker(s) started; running readiness + smoke"
     compose run --rm --no-deps client
     echo
     echo "Container swarm is UP"
+    echo "  nodes    : $NODES"
     echo "  bootstrap: $addr"
     compose ps
     echo
@@ -170,8 +206,8 @@ case "$COMMAND" in
     compose down --remove-orphans
     if [[ "$CLEAN" == "1" ]]; then
       delete_state_dir
-      rm -f "$ENV_FILE"
-      echo "[down] removed container state and .env (image kept)"
+      rm -f "$ENV_FILE" "$GENERATED"
+      echo "[down] removed container state, .env and generated compose (image kept)"
     else
       echo "[down] state and .env kept"
     fi

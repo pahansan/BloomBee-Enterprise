@@ -38,7 +38,9 @@ built once and reused.
 ## Quick start (CPU, no host dependencies)
 
 ```bash
-./sim/docker/run.sh up
+./sim/docker/run.sh up                 # 2 workers
+./sim/docker/run.sh up --nodes 4       # 4 workers, layers split automatically
+./sim/docker/run.sh up --gpu --nodes 3 # 3 CUDA workers
 ```
 
 This builds `bloombee-sim:cpu` if needed, starts bootstrap + two workers on the
@@ -64,8 +66,8 @@ Manage:
 `up` accepts:
 
 ```text
---model <hf-id>       --layers <N>       --dht-prefix <prefix>
---kv-tokens <N>       --max-batch <N>
+--nodes <N>           --layers <N>       --model <hf-id>
+--dht-prefix <prefix> --kv-tokens <N>    --max-batch <N>
 --delay-ms <N>        --jitter-ms <N>    --loss-pct <N>    --rate-mbit <N>
 --build               --gpu
 ```
@@ -74,6 +76,37 @@ Example with a harsher WAN-like link:
 
 ```bash
 ./sim/docker/run.sh up --delay-ms 80 --jitter-ms 20 --loss-pct 1 --rate-mbit 20
+```
+
+## Node count and layer split
+
+`--nodes N` starts N worker containers and splits the model's blocks evenly:
+
+```bash
+# 28 layers -> 14 + 14
+./sim/docker/run.sh up --nodes 2
+
+# 28 layers -> 10 + 9 + 9
+./sim/docker/run.sh up --nodes 3
+
+# 28 layers -> 7 + 7 + 7 + 7
+./sim/docker/run.sh up --gpu --nodes 4
+```
+
+The split is contiguous and covers every layer exactly once; the remainder goes
+to the first workers (same algorithm as the host-side `sim/simctl.py`). The
+number of layers comes from `--layers` (default `28`, matching
+`Qwen/Qwen3-0.6B`); pass `--layers` explicitly for another model.
+
+`run.sh` renders `compose.generated.yaml` with one service per worker (static
+IPs, block range, netem). `compose.yaml` remains the fixed 2-worker example for
+manual Compose use. Limits: `--nodes <= --layers`, and a `/24` bridge allows up
+to ~240 workers.
+
+The host-native harness already supports the same option:
+
+```bash
+./sim/run.sh --nodes 4
 ```
 
 ## GPU mode
@@ -263,7 +296,8 @@ sim/docker/
 ├── requirements.txt    # runtime packages (torch/hivemind installed separately)
 ├── entrypoint.sh       # bootstrap / server / client roles + netem
 ├── compose.yaml        # isolated bridge, static IPs, CPU defaults
-├── compose.gpu.yaml    # `gpus: all` override
+├── compose.gpu.yaml    # `gpus: all` override for the fixed compose.yaml
+├── render_compose.py   # generate N-node compose.generated.yaml
 ├── build.sh            # docker build for cpu|cuda
 ├── run.sh              # up/down/smoke/ask/logs/status/netem
 └── README.md
