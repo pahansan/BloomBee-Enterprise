@@ -128,12 +128,13 @@ case "$COMMAND" in
     done
 
     if [[ "$USE_GPU" == "1" ]]; then
-      IMAGE_TAG="${IMAGE_TAG:-bloombee-sim:cuda}"
+      # Do not let an old .env from a CPU run override the GPU image.
+      IMAGE_TAG="bloombee-sim:cuda"
       DEVICE="cuda:0"
       DTYPE="bfloat16"
       CLIENT_DEVICE="cpu"
     else
-      IMAGE_TAG="${IMAGE_TAG:-bloombee-sim:cpu}"
+      IMAGE_TAG="bloombee-sim:cpu"
       DEVICE="cpu"
       DTYPE="float32"
       CLIENT_DEVICE="cpu"
