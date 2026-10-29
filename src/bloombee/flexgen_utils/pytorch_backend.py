@@ -1389,7 +1389,14 @@ def copy_worker_func(queue, cuda_id):
     use_cuda = torch.cuda.is_available()
     if use_cuda:
         torch.cuda.set_device(cuda_id)
-        cpu_buf = torch.empty((1 * GB,), dtype=torch.float16, pin_memory=True)
+        # Every TorchDisk starts several copy workers (4 by default).  A large
+        # pinned buffer per worker used to pin gigabytes of host RAM per
+        # server (CUDA host mappings made the real RSS even larger).  Use a
+        # small reusable slab
+        # and allocate a temporary pinned buffer only for copies that do not
+        # fit; tune with BLOOMBEE_COPY_BUFFER_MB.
+        buffer_mb = max(1, int(os.environ.get("BLOOMBEE_COPY_BUFFER_MB", "64")))
+        cpu_buf = torch.empty((buffer_mb * 1024 * 1024,), dtype=torch.uint8, pin_memory=True)
         copy_stream = torch.cuda.Stream()
         stream_context = torch.cuda.stream(copy_stream)
     else:
@@ -1412,9 +1419,16 @@ def copy_worker_func(queue, cuda_id):
                 dst.device.device_type == DeviceType.CUDA):
                 if not use_cuda:
                     raise RuntimeError("CUDA tensor copy requested, but torch.cuda is not available")
-                # Use a pinned cpu buffer as a relay
-                size = np.prod(src_data.shape)
-                tmp_cpu_buf = cpu_buf[:size].view(src_data.shape)
+                # Use a pinned cpu buffer as a relay, but keep the reusable slab
+                # small; large tensors get a temporary pinned buffer instead of
+                # pinning a gigabyte per copy worker.
+                nbytes = int(src_data.numel()) * int(src_data.element_size())
+                if nbytes <= cpu_buf.numel():
+                    tmp_cpu_buf = cpu_buf[:nbytes].view(src_data.dtype).view(src_data.shape)
+                else:
+                    tmp_cpu_buf = torch.empty(
+                        src_data.shape, dtype=src_data.dtype, device="cpu", pin_memory=True
+                    )
                 tmp_cpu_buf.copy_(src_data)
                 dst_data.copy_(tmp_cpu_buf)
             else:
