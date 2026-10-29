@@ -6,6 +6,7 @@
 #   ./sim/docker/run.sh up --gpu --nodes 3 # CUDA image (NVIDIA runtime required)
 #   ./sim/docker/run.sh smoke
 #   ./sim/docker/run.sh ask "prompt" --max-new-tokens 128
+#   ./sim/docker/run.sh bench --seq_len 32
 #   ./sim/docker/run.sh logs node-0
 #   ./sim/docker/run.sh status
 #   ./sim/docker/run.sh down [--clean]
@@ -196,6 +197,7 @@ case "$COMMAND" in
     compose ps
     echo
     echo "Try:  $0 ask \"Say hello in one sentence.\" --max-new-tokens 32"
+    echo "Bench: $0 bench --seq_len 32"
     echo "Stop: $0 down"
     ;;
 
@@ -218,6 +220,22 @@ case "$COMMAND" in
     [[ -n "${BOOTSTRAP_ADDR:-}" ]] || { echo "ERROR: run '$0 up' first" >&2; exit 2; }
     compose run --rm --no-deps client
     ;;
+  bench)
+    load_env
+    [[ -n "${BOOTSTRAP_ADDR:-}" ]] || { echo "ERROR: run '$0 up' first" >&2; exit 2; }
+    bench_args=("$@")
+    if [[ ! " ${bench_args[*]} " =~ --seq_len ]]; then
+      bench_args+=(--seq_len "${BENCH_SEQ_LEN:-32}" --early_terminate_steps "${BENCH_SEQ_LEN:-32}")
+    fi
+    compose run --rm --no-deps client python benchmarks/benchmark_inference.py \
+      --model "$MODEL" \
+      --initial_peers "$BOOTSTRAP_ADDR" \
+      --dht_prefix "$DHT_PREFIX" \
+      --torch_dtype "${CLIENT_DTYPE:-float32}" \
+      --client_device "${CLIENT_DEVICE:-cpu}" \
+      "${bench_args[@]}"
+    ;;
+
 
   ask)
     load_env
@@ -294,7 +312,7 @@ case "$COMMAND" in
     ;;
 
   *)
-    echo "usage: $0 {build|up|down|smoke|ask|logs|status|netem|exec}" >&2
+    echo "usage: $0 {build|up|down|smoke|ask|bench|logs|status|netem|exec}" >&2
     exit 2
     ;;
 esac

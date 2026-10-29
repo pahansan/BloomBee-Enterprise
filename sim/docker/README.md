@@ -246,6 +246,53 @@ podman run --rm --device nvidia.com/gpu=all ubuntu:22.04 nvidia-smi
 The Compose files in this directory target Docker; use host Docker Engine for
 the one-command flow.
 
+## Benchmarks
+
+The repository ships benchmark scripts in `benchmarks/`:
+
+| Script | What it measures |
+|---|---|
+| `benchmark_inference.py` | end-to-end decode throughput and client-observed per-token latency |
+| `benchmark_forward.py` | forward-pass latency/throughput |
+| `benchmark_speculative_decoding.py` | speculative decoding / batch behavior |
+| `benchmarks/compression/*` | lossless codec and compression experiments |
+
+Run inference benchmark against the container swarm:
+
+```bash
+./sim/docker/run.sh bench --seq_len 32 --batch_size 1 --warmup_steps 1
+```
+
+`bench` waits for the DHT, runs `benchmark_inference.py` inside a one-off
+`client` container with the current model, bootstrap address and DHT prefix, and
+then removes the client. Extra flags are forwarded to the benchmark:
+
+```bash
+./sim/docker/run.sh bench --seq_len 64 --batch_size 4 --n_processes 2
+```
+
+Reference run on this host (RTX 3070, 3 GPU workers, bf16 servers, CPU client,
+netem 20ms/0.1%/100Mbit, `seq_len=32`):
+
+```text
+throughput = 4.19 tokens/sec/sequence
+mean latency = 238.64 ms, median = 239.46 ms, p95 = 244.38 ms
+```
+
+These numbers include the client-side embeddings/LM head and the simulated
+network; they are not a pure GPU kernel benchmark. Server-side per-stage numbers
+are in `./sim/docker/run.sh logs node-0` (`[PAPER_TIMING_TABLE]`,
+`[PIPELINE_GPU2GPU]`).
+
+For the host-native swarm:
+
+```bash
+./sim/simctl env
+sim/.venv/bin/python benchmarks/benchmark_inference.py \
+  --model Qwen/Qwen3-0.6B --initial_peers "$INITIAL_PEERS" \
+  --dht_prefix sim-Qwen3-0-6B --seq_len 32
+```
+
 ## Network emulation while running
 
 The compose workers have `NET_ADMIN`; change the qdisc live:
