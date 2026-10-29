@@ -11,6 +11,7 @@ BloomBee has a lot of runtime switches behind `BLOOMBEE_*` environment variables
 | Variable | Default | What it does |
 |---|---|---|
 | `BLOOMBEE_CACHE` | `~/.cache/bloombee` | Cache directory for downloaded blocks and local BloomBee artifacts. |
+| `BLOOMBEE_SKIP_VERSION_CHECK` | `0` | Skip the startup request to `pypi.python.org` that prints a traceback when the machine/container has no DNS or internet. Set to `1` in offline deployments. |
 | `BLOOMBEE_COPY_BUFFER_MB` | `64` | Per-copy-worker pinned relay buffer used by FlexGen's disk/GPU copy threads. Large copies allocate a temporary pinned buffer instead. Lower it on RAM-constrained hosts. |
 | `BLOOMBEE_ENABLE_LOCAL_SHM_S2S` | `0` | Pass same-host server-to-server activations through files in `/dev/shm` instead of RPC. Useful for local experiments, but can fill shared memory; leave off unless you know the host has headroom. |
 | `BLOOMBEE_LOCAL_SHM_S2S_DIR` | `/dev/shm` | Directory used by `BLOOMBEE_ENABLE_LOCAL_SHM_S2S`. |
