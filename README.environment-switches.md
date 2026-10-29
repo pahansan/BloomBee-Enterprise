@@ -11,6 +11,7 @@ BloomBee has a lot of runtime switches behind `BLOOMBEE_*` environment variables
 | Variable | Default | What it does |
 |---|---|---|
 | `BLOOMBEE_CACHE` | `~/.cache/bloombee` | Cache directory for downloaded blocks and local BloomBee artifacts. |
+| `BLOOMBEE_COPY_BUFFER_MB` | `64` | Per-copy-worker pinned relay buffer used by FlexGen's disk/GPU copy threads. Large copies allocate a temporary pinned buffer instead. Lower it on RAM-constrained hosts. |
 | `BLOOMBEE_LOGGING` | `True` | Set to `0` / `false` to disable BloomBee's logging initialization tweaks. |
 | `BLOOMBEE_ASYNCIO_LOGLEVEL` | `FATAL` (or `DEBUG` if Hivemind is already in debug mode) | Overrides the asyncio logger level. |
 | `BLOOMBEE_IGNORE_DEPENDENCY_VERSION` | unset | Skips the `transformers>=5.5.0` version assertion. |
