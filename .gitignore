@@ -187,6 +187,20 @@ cache/
 # Local session artifacts (design notes, benchmark logs). Not shipped.
 .bloombee_local/
 
+# Local simulation state (PIDs, identities, per-node homes, logs) and model cache.
+sim/.state/
+sim/.logs/
+sim/.cache/
+sim/**/__pycache__/
+
+# Local Python environment used by the simulation harness (CPU/CUDA validation).
+sim/.venv/
+sim/.bootstrap/
+sim/.uv-python/
+sim/.uv-cache/
+sim/.pip-cache/
+sim/.deps/
+
 # VS Code
 .vscode/
 

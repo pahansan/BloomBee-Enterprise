@@ -12,6 +12,8 @@ BloomBee has a lot of runtime switches behind `BLOOMBEE_*` environment variables
 |---|---|---|
 | `BLOOMBEE_CACHE` | `~/.cache/bloombee` | Cache directory for downloaded blocks and local BloomBee artifacts. |
 | `BLOOMBEE_COPY_BUFFER_MB` | `64` | Per-copy-worker pinned relay buffer used by FlexGen's disk/GPU copy threads. Large copies allocate a temporary pinned buffer instead. Lower it on RAM-constrained hosts. |
+| `BLOOMBEE_ENABLE_LOCAL_SHM_S2S` | `0` | Pass same-host server-to-server activations through files in `/dev/shm` instead of RPC. Useful for local experiments, but can fill shared memory; leave off unless you know the host has headroom. |
+| `BLOOMBEE_LOCAL_SHM_S2S_DIR` | `/dev/shm` | Directory used by `BLOOMBEE_ENABLE_LOCAL_SHM_S2S`. |
 | `BLOOMBEE_LOGGING` | `True` | Set to `0` / `false` to disable BloomBee's logging initialization tweaks. |
 | `BLOOMBEE_ASYNCIO_LOGLEVEL` | `FATAL` (or `DEBUG` if Hivemind is already in debug mode) | Overrides the asyncio logger level. |
 | `BLOOMBEE_IGNORE_DEPENDENCY_VERSION` | unset | Skips the `transformers>=5.5.0` version assertion. |
