@@ -9,3 +9,17 @@ __pycache__
 .DS_Store
 dist
 build
+.git
+.gitignore
+sim/.venv
+sim/.cache
+sim/.state
+sim/.logs
+sim/.bootstrap
+sim/.uv-python
+sim/.uv-cache
+sim/.pip-cache
+sim/.deps
+sim/docker/state
+sim/docker/.env
+**/__pycache__
