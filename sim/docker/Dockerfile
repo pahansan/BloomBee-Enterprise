@@ -8,6 +8,11 @@
 #     --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu128 \
 #     --build-arg TORCH_SPEC=torch==2.11.0+cu128 \
 #     -t bloombee-sim:cuda .
+#
+# Another model (baked into the image, so a rebuild is required):
+#   docker build -f sim/docker/Dockerfile \
+#     --build-arg MODEL=meta-llama/Llama-3.2-1B \
+#     -t bloombee-sim:cpu .
 FROM python:3.11-slim-bookworm
 
 ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
@@ -19,7 +24,7 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/opt/hf \
     HUGGINGFACE_HUB_CACHE=/opt/hf/hub \
-    BLOOMBEE_CACHE=/opt/hf/hub \
+    BLOOMBEE_CACHE=/opt/bloombee-cache \
     OMP_NUM_THREADS=2 \
     MKL_NUM_THREADS=2
 
@@ -42,18 +47,32 @@ RUN git clone --filter=blob:none https://github.com/learning-at-home/hivemind.gi
     && git -C /tmp/hivemind checkout 4bd43b77895019b20d18d81d0d0c1a5ab9a10847 \
     && python - <<'PY'
 from pathlib import Path
+
 p = Path("/tmp/hivemind/pyproject.toml")
-p.write_text(p.read_text().replace('license = "MIT"', 'license = {text = "MIT"}'))
+text = p.read_text()
+old, new = 'license = "MIT"', 'license = {text = "MIT"}'
+if old not in text:
+    raise SystemExit("Expected Hivemind pyproject license field not found")
+p.write_text(text.replace(old, new, 1))
 PY
 RUN python -m pip install --no-build-isolation --no-deps /tmp/hivemind \
     && rm -rf /tmp/hivemind
 
 # Bake the default model before copying the project, so code changes do not
-# invalidate the (large) model layer.
+# invalidate the (large) model layer. MODEL is declared here so that changing
+# it only rebuilds this layer and the ones below, not torch/hivemind.
+ARG MODEL=Qwen/Qwen3-0.6B
+ENV BLOOMBEE_SIM_MODEL=${MODEL}
+
 RUN python - <<'PY'
+import os
+
 from huggingface_hub import snapshot_download
-snapshot_download("Qwen/Qwen3-0.6B")
+
+snapshot_download(os.environ["BLOOMBEE_SIM_MODEL"])
 PY
+
+LABEL org.bloombee.sim.model="${BLOOMBEE_SIM_MODEL}"
 
 # Runtime is fully offline for model/tokenizer access.
 ENV HF_HUB_OFFLINE=1 \

@@ -60,6 +60,7 @@ Running an LLM across decentralized GPUs is bottlenecked by inter-node bandwidth
   - [1. Start a Bootstrap Node](#1-start-a-bootstrap-node)
   - [2. Start Worker Servers](#2-start-worker-servers)
   - [3. Run Inference](#3-run-inference)
+- [Containerized Simulation](sim/docker/README.md)
 - [CLI Reference](#cli-reference)
 - [Environment Switches](README.environment-switches.md)
 - [Logging Reference](README.logging.md)
@@ -240,6 +241,10 @@ python benchmarks/benchmark_training.py \
   --batch_size 32 \
   --seq_len 128
 ``` -->
+
+> **Containerized simulation:** [`sim/docker/`](sim/docker/README.md) builds a
+> self-contained offline swarm (bootstrap + N workers + netem) and exposes
+> `up`/`down`/`smoke`/`ask`/`bench` through a single `run.sh`.
 
 ---
 
