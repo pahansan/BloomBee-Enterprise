@@ -49,12 +49,12 @@ def build_compose(args: argparse.Namespace) -> str:
         ("BOOTSTRAP_ADDR", "${BOOTSTRAP_ADDR:-}"),
         ("HF_HOME", "/opt/hf"),
         ("HUGGINGFACE_HUB_CACHE", "/opt/hf/hub"),
-        ("BLOOMBEE_CACHE", "/opt/hf/hub"),
+        ("BLOOMBEE_CACHE", "/opt/bloombee-cache"),
         ("HF_HUB_OFFLINE", "1"),
         ("TRANSFORMERS_OFFLINE", "1"),
         ("BLOOMBEE_COPY_BUFFER_MB", args.copy_buffer_mb),
         ("BLOOMBEE_SKIP_VERSION_CHECK", "1"),
-        ("NETEM_ENABLE", "1"),
+        ("NETEM_ENABLE", args.netem_enable),
         ("NVIDIA_DRIVER_CAPABILITIES", "compute,utility"),
     ]
 
@@ -70,7 +70,7 @@ def build_compose(args: argparse.Namespace) -> str:
         "services:",
         "  bootstrap:",
         f"    image: {args.image_tag}",
-        '    container_name: bloombee-sim-bootstrap',
+        "    container_name: bloombee-sim-bootstrap",
         '    restart: "no"',
         '    shm_size: "2gb"',
         "    volumes:",
@@ -133,7 +133,7 @@ def build_compose(args: argparse.Namespace) -> str:
             ("ROLE", "client"),
             ("CLIENT_DEVICE", args.client_device),
             ("CLIENT_DTYPE", args.client_dtype),
-                ("WAIT_TIMEOUT", "600"),
+            ("WAIT_TIMEOUT", "600"),
             ("SMOKE_TOKENS", "8"),
             ("SMOKE_PROMPT", "The capital of France is"),
         ]
@@ -170,6 +170,7 @@ def main() -> int:
     parser.add_argument("--jitter-ms", default="5")
     parser.add_argument("--loss-pct", default="0.1")
     parser.add_argument("--rate-mbit", default="100")
+    parser.add_argument("--netem-enable", default="1")
     parser.add_argument("--gpu", action="store_true")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()

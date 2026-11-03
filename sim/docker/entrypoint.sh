@@ -9,7 +9,11 @@ if [[ $# -gt 0 && ( "$1" == "bootstrap" || "$1" == "server" || "$1" == "client" 
   shift
 fi
 
-MODEL="${MODEL:-Qwen/Qwen3-0.6B}"
+MODEL="${MODEL:-${BLOOMBEE_SIM_MODEL:-Qwen/Qwen3-0.6B}}"
+if [[ -n "${BLOOMBEE_SIM_MODEL:-}" && "$MODEL" != "$BLOOMBEE_SIM_MODEL" ]]; then
+  echo "ERROR: image contains ${BLOOMBEE_SIM_MODEL}, but MODEL=${MODEL}" >&2
+  exit 2
+fi
 DHT_PREFIX="${DHT_PREFIX:-sim-Qwen3-0-6B}"
 DEVICE="${DEVICE:-cpu}"
 DTYPE="${DTYPE:-float32}"

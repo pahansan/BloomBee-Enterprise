@@ -70,14 +70,25 @@ Manage:
 ```
 
 `--nodes N` requires `N <= --layers` (default `28`, matching
-`Qwen/Qwen3-0.6B`). The remainder goes to the first workers. For another model:
-
-```bash
-./sim/docker/run.sh up --gpu --nodes 4 --layers 32 --model <hf-id>
-```
+`Qwen/Qwen3-0.6B`). The remainder goes to the first workers.
 
 `run.sh` writes `compose.generated.yaml` with one service per worker; there is
 no static compose file to edit. The `/24` bridge supports roughly 240 workers.
+
+## Models
+
+The image bakes exactly one model (`Qwen/Qwen3-0.6B` by default). To use
+another one, rebuild the image with `MODEL=...` and pass the same id and the
+model's layer count to `up`:
+
+```bash
+MODEL=meta-llama/Llama-3.2-1B ./sim/docker/build.sh cuda
+./sim/docker/run.sh up --gpu --nodes 2 --layers 16 --model meta-llama/Llama-3.2-1B
+```
+
+`up` reads the `org.bloombee.sim.model` label from the image and fails early if
+the image was built for a different model. Since the model is baked in, runtime
+containers never download weights.
 
 ## Build
 
@@ -95,11 +106,15 @@ builds reuse layers.
 Workers run with `NET_ADMIN`; change the qdisc live:
 
 ```bash
-./sim/docker/run.sh netem node-0 delay 100ms
-./sim/docker/run.sh netem node-0 loss 2%
-./sim/docker/run.sh netem node-0 rate 10mbit
-./sim/docker/run.sh netem node-0 reset
+./sim/docker/run.sh netem node-0 --delay 100ms --loss 2%
+./sim/docker/run.sh netem node-0 --rate 10mbit
+./sim/docker/run.sh netem node-0 --reset
 ```
+
+Every call replaces the whole qdisc with `tc qdisc replace`, so parameters you
+omit keep the values from `.env` (20 ms delay, 5 ms jitter, 0.1% loss,
+100 mbit). Start with `up --no-netem` to disable emulation and `up --netem` to
+enable it again.
 
 `down --clean` deletes root-owned state through a throw-away root container, so
 it does not need `sudo`.

@@ -128,6 +128,8 @@ case "$COMMAND" in
         --jitter-ms) NETEM_JITTER_MS="$2"; shift 2 ;;
         --loss-pct) NETEM_LOSS_PCT="$2"; shift 2 ;;
         --rate-mbit) NETEM_RATE_MBIT="$2"; shift 2 ;;
+        --netem) NETEM_ENABLE=1; shift ;;
+        --no-netem) NETEM_ENABLE=0; shift ;;
        *) echo "unknown up argument: $1" >&2; exit 2 ;;
       esac
     done
@@ -144,10 +146,19 @@ case "$COMMAND" in
       DTYPE="float32"
       CLIENT_DEVICE="cpu"
     fi
-    export IMAGE_TAG DEVICE DTYPE CLIENT_DEVICE
+    export IMAGE_TAG DEVICE DTYPE CLIENT_DEVICE MODEL
 
     if [[ "$BUILD" == "1" ]] || ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
       "$DOCKER_DIR/build.sh" "$MODE"
+    fi
+    baked_model="$(docker image inspect \
+      --format '{{ if .Config.Labels }}{{ index .Config.Labels "org.bloombee.sim.model" }}{{ end }}' \
+      "$IMAGE_TAG" 2>/dev/null || true)"
+    if [[ "$baked_model" == "<no value>" ]]; then baked_model=""; fi
+    if [[ -n "$baked_model" && "$baked_model" != "$MODEL" ]]; then
+      echo "ERROR: image $IMAGE_TAG contains $baked_model, but --model is $MODEL" >&2
+      echo "       Rebuild first: MODEL=$MODEL $DOCKER_DIR/build.sh $MODE" >&2
+      exit 2
     fi
 
     if ! [[ "$NODES" =~ ^[0-9]+$ ]] || (( NODES < 1 )); then
@@ -175,6 +186,7 @@ case "$COMMAND" in
       --copy-buffer-mb "${BLOOMBEE_COPY_BUFFER_MB:-64}" \
       --delay-ms "$NETEM_DELAY_MS" --jitter-ms "$NETEM_JITTER_MS" \
       --loss-pct "$NETEM_LOSS_PCT" --rate-mbit "$NETEM_RATE_MBIT" \
+      --netem-enable "${NETEM_ENABLE:-1}" \
       "${gpu_arg[@]}" \
       --output "$GENERATED"
     compose up -d --remove-orphans bootstrap
@@ -209,7 +221,12 @@ case "$COMMAND" in
       rm -f "$ENV_FILE" "$GENERATED"
       echo "[down] removed container state, .env and generated compose (image kept)"
     else
-      echo "[down] state and .env kept"
+      if [[ -s "$ENV_FILE" ]]; then
+        write_env ""
+        echo "[down] state and .env kept; bootstrap address cleared"
+      else
+        echo "[down] state and .env kept"
+      fi
     fi
     ;;
 
@@ -224,6 +241,27 @@ case "$COMMAND" in
     bench_args=("$@")
     if [[ ! " ${bench_args[*]} " =~ --seq_len ]]; then
       bench_args+=(--seq_len "${BENCH_SEQ_LEN:-32}" --early_terminate_steps "${BENCH_SEQ_LEN:-32}")
+    fi
+    seq_len="${BENCH_SEQ_LEN:-32}"
+    prompt_len=1
+    i=0
+    while (( i < ${#bench_args[@]} )); do
+      case "${bench_args[i]}" in
+        --seq_len) seq_len="${bench_args[i + 1]:?--seq_len needs a value}"; i=$((i + 2)) ;;
+        --seq_len=*) seq_len="${bench_args[i]#*=}"; i=$((i + 1)) ;;
+        --prompt_len) prompt_len="${bench_args[i + 1]:?--prompt_len needs a value}"; i=$((i + 2)) ;;
+        --prompt_len=*) prompt_len="${bench_args[i]#*=}"; i=$((i + 1)) ;;
+        *) i=$((i + 1)) ;;
+      esac
+    done
+    if ! [[ "$seq_len" =~ ^[0-9]+$ && "$prompt_len" =~ ^[0-9]+$ ]]; then
+      echo "ERROR: --seq_len and --prompt_len must be non-negative integers" >&2
+      exit 2
+    fi
+    if (( 10#$seq_len + 10#$prompt_len > KV_TOKENS )); then
+      echo "ERROR: --seq_len $seq_len + --prompt_len $prompt_len exceeds the server KV cache (KV_TOKENS=$KV_TOKENS)" >&2
+      echo "       Restart with 'up --kv-tokens <N>' or lower --seq_len/--prompt_len." >&2
+      exit 2
     fi
     compose run --rm --no-deps client python benchmarks/benchmark_inference.py \
       --model "$MODEL" \
@@ -292,16 +330,33 @@ case "$COMMAND" in
 
   netem)
     load_env
-    NODE="${1:?usage: $0 netem node-0|node-1 delay|loss|rate|reset value}"
-    ACTION="${2:?}"
-    shift 2
-    case "$ACTION" in
-      delay) compose exec "$NODE" tc qdisc change dev eth0 root netem delay "$1" ;;
-      loss) compose exec "$NODE" tc qdisc change dev eth0 root netem loss "$1" ;;
-      rate) compose exec "$NODE" tc qdisc change dev eth0 root netem rate "$1" ;;
-      reset) compose exec "$NODE" tc qdisc del dev eth0 root 2>/dev/null || true ;;
-      *) echo "unknown netem action: $ACTION" >&2; exit 2 ;;
-    esac
+    NODE="${1:?usage: $0 netem node-0 [--delay 100ms] [--jitter 5ms] [--loss 2%] [--rate 10mbit] [--reset]}"
+    shift
+    DELAY="${NETEM_DELAY_MS:-20}ms"
+    JITTER="${NETEM_JITTER_MS:-5}ms"
+    LOSS="${NETEM_LOSS_PCT:-0.1}%"
+    RATE="${NETEM_RATE_MBIT:-100}"
+    if [[ "$RATE" != "0" ]]; then RATE="${RATE}mbit"; fi
+    RESET=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --delay) DELAY="$2"; shift 2 ;;
+        --jitter) JITTER="$2"; shift 2 ;;
+        --loss) LOSS="$2"; shift 2 ;;
+        --rate) RATE="$2"; shift 2 ;;
+        --reset) RESET=1; shift ;;
+        *) echo "unknown netem argument: $1" >&2; exit 2 ;;
+      esac
+    done
+    if [[ "$RESET" == "1" ]]; then
+      compose exec -T "$NODE" tc qdisc del dev eth0 root 2>/dev/null || true
+      echo "[netem] $NODE: kernel default qdisc restored"
+      exit 0
+    fi
+    qdisc=(delay "$DELAY" "$JITTER" loss "$LOSS")
+    if [[ "$RATE" != "0" ]]; then qdisc+=(rate "$RATE"); fi
+    compose exec -T "$NODE" tc qdisc replace dev eth0 root netem "${qdisc[@]}"
+    echo "[netem] $NODE: ${qdisc[*]}"
     ;;
 
   exec)

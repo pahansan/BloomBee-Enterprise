@@ -91,7 +91,7 @@ def main() -> int:
                 f"ASK_FAIL: request needs {needed} tokens "
                 f"(prompt {prompt_tokens} + max_new_tokens {max_new_tokens}), "
                 f"but the running server KV cache is limited to {args.max_cache_tokens}. "
-                f"Restart with --kv-tokens {needed} (and --max-batch-size >= {needed}) "
+                f"Restart with --kv-tokens {needed} (and --max-batch {needed}) "
                 f"or lower --max-new-tokens.",
                 file=sys.stderr,
             )
