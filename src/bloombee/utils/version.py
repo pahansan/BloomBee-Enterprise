@@ -13,6 +13,9 @@ logger = get_logger(__name__)
 
 def validate_version() -> None:
     logger.info(f"Running {TextStyle.BOLD}bloombee {bloombee.__version__}{TextStyle.RESET}")
+    if os.environ.get("BLOOMBEE_SKIP_VERSION_CHECK", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        logger.debug("Skipping PyPI version check (BLOOMBEE_SKIP_VERSION_CHECK=1)")
+        return
     try:
         r = requests.get("https://pypi.python.org/pypi/bloombee/json", timeout=10)
         r.raise_for_status()
