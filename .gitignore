@@ -197,3 +197,6 @@ sim/docker/compose.generated.yaml
 
 # macOS folder metadata
 .DS_Store
+
+# local buildx state
+.buildx/

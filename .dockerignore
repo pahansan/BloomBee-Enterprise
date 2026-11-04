@@ -23,3 +23,6 @@ sim/.deps
 sim/docker/state
 sim/docker/.env
 **/__pycache__
+
+# local buildx state
+.buildx
